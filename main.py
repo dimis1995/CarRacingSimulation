@@ -2,15 +2,20 @@ import pygame
 
 from CarSprite import CarSprite
 from Track import Track
+from tracks import TRACKS
 
 # Window size
 WINDOW_WIDTH    = 1280
 WINDOW_HEIGHT   = 720
 WINDOW_SURFACE  = pygame.HWSURFACE|pygame.DOUBLEBUF|pygame.RESIZABLE
 
-TRACK_WIDTH     = 1200
-TRACK_HEIGHT    = 700
-TRACK_LANE_WIDTH = 150
+# Track
+TRACK_DEF    = TRACKS["ring"]
+TRACK_GRID   = TRACK_DEF["grid"]
+CELL_SIZE    = TRACK_DEF["cell_size"]
+GRID_ROWS    = len( TRACK_GRID )
+GRID_COLS    = len( TRACK_GRID[0] )
+TRACK_ORIGIN = ( ( WINDOW_WIDTH - GRID_COLS * CELL_SIZE ) // 2, ( WINDOW_HEIGHT - GRID_ROWS * CELL_SIZE ) // 2 )
 
 
 ### initialisation
@@ -24,10 +29,12 @@ pygame.display.set_caption("Car Steering")
 car_image  = pygame.image.load( 'car_128.png' ).convert_alpha()
 
 # Track
-track = Track(16, TRACK_WIDTH, TRACK_HEIGHT, TRACK_LANE_WIDTH, window)
+track = Track( TRACK_GRID, CELL_SIZE, origin=TRACK_ORIGIN,
+               start_cell=TRACK_DEF["start_cell"], start_heading_degrees=TRACK_DEF["start_heading_degrees"] )
 
 ### Sprites
-black_car = CarSprite( car_image, track.get_start_position_x, track.get_start_position_y, heading_degrees=180 )
+start = track.get_start_position()
+black_car = CarSprite( car_image, start.x, start.y, heading_degrees=track.start_heading_degrees )
 car_sprites = pygame.sprite.Group() #Single()
 car_sprites.add( black_car )
 
@@ -78,7 +85,7 @@ while not done:
         out_of_bounds()        
 
     # Draw the track
-    track.draw()
+    track.draw(window)
 
     # Update the car(s)
     car_sprites.update(car_is_in_green)
