@@ -3,6 +3,7 @@ import math
 import pygame
 
 RAY_COUNT = 8
+MAX_SPEED = 15.0   # used only to scale the speed feature into roughly the same range as the ray features
 
 RAY_COLOR      = (255, 255, 0)
 GREEN_COLOR    = (0, 255, 0)
@@ -38,7 +39,7 @@ class Agent:
             state.append( wall_distance / self.max_range )
             state.append( green_distance / self.max_range )
         state.append( 1.0 if in_green else 0.0 )
-        state.append( self.car.speed )
+        state.append( self.car.speed / MAX_SPEED )
 
         if self.debug:
             self._frame += 1

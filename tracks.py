@@ -1,4 +1,4 @@
-from Track import ASPHALT, CHECKPOINT_BASE, SLOW
+from Track import ASPHALT, SLOW, CHECKPOINT_BASE
 
 
 def _ring_grid( rows, cols, ring_thickness ):
@@ -13,18 +13,38 @@ def _ring_grid( rows, cols, ring_thickness ):
     ]
 
 
-def _with_checkpoints( grid, checkpoints ):
-    """ checkpoints: ordered list of (row, col) cells, numbered 101, 102, ... in sequence """
-    for index, ( row, col ) in enumerate( checkpoints, start=1 ):
-        grid[row][col] = CHECKPOINT_BASE + index
+def _with_checkpoint_gates( grid, gates ):
+    """ Paint each checkpoint as a full-width line across the road (a "gate"), not a
+        single cell -- so crossing it anywhere across the track's width counts, rather
+        than needing to drive through one exact lane position.
+        gates: ordered list of (orientation, fixed_index, span_start, span_end).
+          'v': fixed_index is a column, span is a row range    -- a vertical gate across a horizontal straight
+          'h': fixed_index is a row,    span is a column range -- a horizontal gate across a vertical straight """
+    for index, ( orientation, fixed, span_start, span_end ) in enumerate( gates, start=1 ):
+        value = CHECKPOINT_BASE + index
+        for pos in range( span_start, span_end + 1 ):
+            if orientation == 'v':
+                grid[pos][fixed] = value
+            else:
+                grid[fixed][pos] = value
     return grid
 
 
-# --- Ring: rectangular loop, one checkpoint per straight, in travel order ---
+# --- Ring: rectangular loop, gates spanning the full track width, in travel order ---
 RING = {
-    "grid": _with_checkpoints(
+    "grid": _with_checkpoint_gates(
         _ring_grid( rows=16, cols=30, ring_thickness=3 ),
-        checkpoints=[ (14, 5), (7, 1), (1, 15), (7, 28) ],
+        gates=[
+            ( 'v', 10, 13, 15 ),   # bottom straight, first segment (heading west from start)
+            ( 'v',  5, 13, 15 ),
+            ( 'h', 10,  0,  2 ),   # left straight (heading north)
+            ( 'h',  5,  0,  2 ),
+            ( 'v', 10,  0,  2 ),   # top straight (heading east)
+            ( 'v', 20,  0,  2 ),
+            ( 'h',  5, 27, 29 ),   # right straight (heading south)
+            ( 'h', 10, 27, 29 ),
+            ( 'v', 20, 13, 15 ),   # bottom straight, second segment (heading west back to start)
+        ],
     ),
     "cell_size":             40,
     "start_cell":            (14, 15),   # middle of the bottom straight
@@ -34,7 +54,7 @@ RING = {
 
 # --- L-Bend: hand-authored, non-rectangular, no infield hole -- proves the grid isn't limited to loops ---
 L_BEND = {
-    "grid": _with_checkpoints(
+    "grid": _with_checkpoint_gates(
         [
             [0,0,0,0,0,0,0,0,0,0,0,0],
             [0,1,1,1,1,1,1,1,1,1,1,0],
@@ -47,7 +67,10 @@ L_BEND = {
             [0,1,1,0,0,0,0,0,0,0,0,0],
             [0,0,0,0,0,0,0,0,0,0,0,0],
         ],
-        checkpoints=[ (5, 1), (1, 8) ],
+        gates=[
+            ( 'h', 5, 1, 2 ),   # vertical arm (heading north)
+            ( 'v', 8, 1, 2 ),   # horizontal arm (heading east)
+        ],
     ),
     "cell_size":             40,
     "start_cell":            (8, 1),   # bottom of the vertical arm
