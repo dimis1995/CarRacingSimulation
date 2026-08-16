@@ -1,5 +1,6 @@
 import pygame
 
+from Agent import Agent
 from CarSprite import CarSprite
 from Track import Track
 from tracks import TRACKS
@@ -8,6 +9,8 @@ from tracks import TRACKS
 WINDOW_WIDTH    = 1280
 WINDOW_HEIGHT   = 720
 WINDOW_SURFACE  = pygame.HWSURFACE|pygame.DOUBLEBUF|pygame.RESIZABLE
+
+DEBUG = True
 
 # Track
 TRACK_DEF    = TRACKS["ring"]
@@ -38,9 +41,15 @@ black_car = CarSprite( car_image, start.x, start.y, heading_degrees=track.start_
 car_sprites = pygame.sprite.Group() #Single()
 car_sprites.add( black_car )
 
+# Agent
+SENSOR_MAX_RANGE = min( WINDOW_WIDTH, WINDOW_HEIGHT ) // 4
+agent = Agent( black_car, track, SENSOR_MAX_RANGE, debug=DEBUG )
+
 
 def out_of_bounds():
     print("OUT OF BOUNDS")
+    restart = track.get_start_position()
+    black_car.reset( restart.x, restart.y, track.start_heading_degrees )
 
 
 ### Main Loop
@@ -82,17 +91,20 @@ while not done:
     elif loc == 'green':
         car_is_in_green = True
     else:
-        out_of_bounds()        
+        out_of_bounds()
 
-    # Draw the track
-    track.draw(window)
+    # Agent senses the world from the car's current (pre-move) position
+    agent.sense()
 
     # Update the car(s)
     car_sprites.update(car_is_in_green)
 
-    # Update the window
-    # window.blit( background, ( 0, 0 ) ) # backgorund
+    # Redraw the whole frame -- fill first so nothing from last frame lingers
+    # outside the track's own bounds (rays, old sprite positions, etc.)
+    window.fill( (0, 0, 0) )
+    track.draw(window)
     car_sprites.draw( window )
+    agent.draw_debug(window)
     pygame.display.flip()
 
     # Clamp FPS

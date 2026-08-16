@@ -37,6 +37,18 @@ class CarSprite( pygame.sprite.Sprite ):
         self.rect         = self.image.get_rect()
         self.rect.center  = ( x, y )
 
+    def reset( self, x, y, heading_degrees=0 ):
+        """ Snap the car back to a given position/heading, e.g. after going out of bounds """
+        self.heading  = math.radians( heading_degrees )
+        self.speed    = 0
+        self.velocity = pygame.math.Vector2( 0, 0 )
+        self.position = pygame.math.Vector2( x, y )
+
+        image_index      = int( self.heading / self.min_angle ) % len( self.rot_img )
+        self.image        = self.rot_img[ image_index ]
+        self.rect         = self.image.get_rect()
+        self.rect.center  = ( x, y )
+
     def turn( self, angle_degrees ):
         """ Adjust the angle the car is heading, if this means using a 
             different car-image, select that here too """

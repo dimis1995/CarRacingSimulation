@@ -76,3 +76,27 @@ class Track:
         x = self.origin.x + ( col + 0.5 ) * self.cell_size
         y = self.origin.y + ( row + 0.5 ) * self.cell_size
         return pygame.Vector2( x, y )
+
+    def cast_ray(self, origin, angle_degrees, max_range, step=5):
+        """ March outward from `origin` at `angle_degrees` (world-space, 0=east),
+            returning (distance to first WALL cell, distance to first SLOW cell) --
+            both capped at max_range if nothing is hit. Marching continues through
+            SLOW cells (they aren't walls), only stopping at WALL or max_range. """
+        direction = pygame.Vector2()
+        direction.from_polar( ( 1, angle_degrees ) )
+        origin = pygame.Vector2( origin )
+
+        green_distance = max_range
+        found_green    = False
+
+        distance = step
+        while distance <= max_range:
+            value = self.value_at( origin + direction * distance )
+            if value == WALL:
+                return distance, green_distance
+            if value == SLOW and not found_green:
+                green_distance = distance
+                found_green    = True
+            distance += step
+
+        return max_range, green_distance
