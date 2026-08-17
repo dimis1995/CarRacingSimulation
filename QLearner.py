@@ -1,3 +1,4 @@
+import json
 import random
 
 ACTIONS = ( "accelerate", "slow_down", "turn_left", "turn_right" )
@@ -51,3 +52,17 @@ class QLearner:
 
     def decay_epsilon(self):
         self.epsilon = max( self.epsilon_min, self.epsilon * self.epsilon_decay )
+
+    def save(self, path):
+        with open( path, "w" ) as f:
+            json.dump( { "weights": self.weights, "epsilon": self.epsilon }, f )
+
+    def load(self, path):
+        try:
+            with open( path, "r" ) as f:
+                data = json.load( f )
+        except FileNotFoundError:
+            print( f"No saved weights found at {path}" )
+            return
+        self.weights = data["weights"]
+        self.epsilon = data["epsilon"]

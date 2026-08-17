@@ -1,4 +1,4 @@
-from Track import ASPHALT, SLOW, CHECKPOINT_BASE
+from Track import ASPHALT, CHECKPOINT_BASE, SLOW
 
 
 def _ring_grid( rows, cols, ring_thickness ):

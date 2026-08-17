@@ -23,6 +23,11 @@ SCREEN_HEIGHT       = WINDOW_HEIGHT + HUD_HEIGHT
 
 DEBUG    = True
 TRAINING = True   # False switches back to keyboard control (K_UP/K_DOWN/K_LEFT/K_RIGHT)
+SAVE_PATH = "weights.json"
+
+# Controls (all work regardless of TRAINING):
+#   S  save weights      L  load weights      D  toggle ray debug view
+#   R  restart episode    T  switch track
 
 # Reward shaping
 TIME_COST_REWARD     = -1
@@ -33,14 +38,22 @@ OUT_OF_BOUNDS_REWARD  = -100
 ACCEL_AMOUNT  = 0.3
 TURN_DEGREES  = 3
 
-# Track
-TRACK_DEF    = TRACKS["ring"]
-TRACK_GRID   = TRACK_DEF["grid"]
-CELL_SIZE    = TRACK_DEF["cell_size"]
-GRID_ROWS    = len( TRACK_GRID )
-GRID_COLS    = len( TRACK_GRID[0] )
-TRACK_ORIGIN = ( ( WINDOW_WIDTH - GRID_COLS * CELL_SIZE ) // 2,
-                  HUD_HEIGHT + ( WINDOW_HEIGHT - GRID_ROWS * CELL_SIZE ) // 2 )
+TRACK_NAMES = list( TRACKS.keys() )
+
+
+def _build_track(track_def):
+    """ Build a Track (+ its checkpoint count) from a tracks.py definition,
+        centered within the fixed track-viewing area regardless of its grid size. """
+    grid      = track_def["grid"]
+    cell_size = track_def["cell_size"]
+    rows      = len( grid )
+    cols      = len( grid[0] )
+    origin    = ( ( WINDOW_WIDTH - cols * cell_size ) // 2,
+                  HUD_HEIGHT + ( WINDOW_HEIGHT - rows * cell_size ) // 2 )
+    new_track = Track( grid, cell_size, origin=origin,
+                        start_cell=track_def["start_cell"], start_heading_degrees=track_def["start_heading_degrees"] )
+    num_checkpoints = len( { cell for row in grid for cell in row if cell >= CHECKPOINT_BASE } )
+    return new_track, num_checkpoints
 
 
 ### initialisation
@@ -54,8 +67,8 @@ pygame.display.set_caption("Car Steering")
 car_image  = pygame.image.load( 'car_128.png' ).convert_alpha()
 
 # Track
-track = Track( TRACK_GRID, CELL_SIZE, origin=TRACK_ORIGIN,
-               start_cell=TRACK_DEF["start_cell"], start_heading_degrees=TRACK_DEF["start_heading_degrees"] )
+current_track_index    = 0
+track, NUM_CHECKPOINTS = _build_track( TRACKS[TRACK_NAMES[current_track_index]] )
 
 ### Sprites
 start = track.get_start_position()
@@ -68,8 +81,7 @@ SENSOR_MAX_RANGE = min( WINDOW_WIDTH, WINDOW_HEIGHT ) // 4
 agent = Agent( black_car, track, SENSOR_MAX_RANGE, debug=DEBUG )
 
 # Learner
-NUM_FEATURES    = RAY_COUNT * 2 + 2   # (wall,green) per ray, + in_green flag + speed
-NUM_CHECKPOINTS = len( { cell for row in TRACK_GRID for cell in row if cell >= CHECKPOINT_BASE } )
+NUM_FEATURES = RAY_COUNT * 2 + 2   # (wall,green) per ray, + in_green flag + speed
 learner = QLearner( NUM_FEATURES )
 
 # HUD -- its own reserved strip at the top, never overlapping the track below it
@@ -104,6 +116,21 @@ def reset_car():
     black_car.reset( restart.x, restart.y, track.start_heading_degrees )
 
 
+def load_track(index):
+    global track, NUM_CHECKPOINTS, current_track_index, next_checkpoint_index, frames_since_progress, episode_score
+    current_track_index = index % len( TRACK_NAMES )
+    track, NUM_CHECKPOINTS = _build_track( TRACKS[TRACK_NAMES[current_track_index]] )
+    agent.track = track
+    reset_car()
+    next_checkpoint_index = 1
+    frames_since_progress = 0
+    episode_score          = 0.0
+    print( f"Switched to track '{TRACK_NAMES[current_track_index]}'" )
+
+
+manual_restart_requested = False
+
+
 ### Main Loop
 clock = pygame.time.Clock()
 done = False
@@ -121,7 +148,19 @@ while not done:
             # On mouse-click
             pass
         elif ( event.type == pygame.KEYUP ):
-            if not TRAINING:
+            if ( event.key == pygame.K_s ):
+                learner.save( SAVE_PATH )
+                print( f"Saved weights to {SAVE_PATH}" )
+            elif ( event.key == pygame.K_l ):
+                learner.load( SAVE_PATH )
+            elif ( event.key == pygame.K_d ):
+                agent.debug = not agent.debug
+                print( f"Debug view: {'on' if agent.debug else 'off'}" )
+            elif ( event.key == pygame.K_r ):
+                manual_restart_requested = True
+            elif ( event.key == pygame.K_t ):
+                load_track( current_track_index + 1 )
+            elif not TRAINING:
                 if ( event.key == pygame.K_UP ):
                     black_car.accelerate( 0.5 )
                 elif ( event.key == pygame.K_DOWN ):
@@ -151,11 +190,12 @@ while not done:
     # Work out what happened as a result of this step
     zone          = track.zone( black_car.position )
     episode_done  = False
-    timed_out     = False
+    end_reason    = None
     reward        = TIME_COST_REWARD
     if zone == 'outside':
         reward       = OUT_OF_BOUNDS_REWARD
         episode_done = True
+        end_reason   = "out of bounds"
     else:
         # Scan the path just traveled, not just the final pixel -- a fast-moving car can
         # otherwise step clean over a single checkpoint cell without ever landing on it.
@@ -173,7 +213,13 @@ while not done:
     if not episode_done and frames_since_progress >= STALL_TIMEOUT_FRAMES:
         reward       = OUT_OF_BOUNDS_REWARD
         episode_done = True
-        timed_out    = True
+        end_reason   = "stalled (no checkpoint for 60s)"
+
+    if not episode_done and manual_restart_requested:
+        reward       = 0   # not a real failure -- just an interruption, so no penalty
+        episode_done = True
+        end_reason   = "manual restart"
+    manual_restart_requested = False
 
     if episode_done:
         best_score = max( best_score, episode_score )
@@ -183,8 +229,7 @@ while not done:
         frames_since_progress  = 0
         if TRAINING:
             learner.decay_epsilon()   # once per EPISODE, not per frame -- see QLearner's epsilon_decay
-            reason = "stalled (no checkpoint for 60s)" if timed_out else "out of bounds"
-            print( f"Episode {episode_count} ended [{reason}]  epsilon={learner.epsilon:.3f}  "
+            print( f"Episode {episode_count} ended [{end_reason}]  epsilon={learner.epsilon:.3f}  "
                    f"score={episode_score:.1f}  best={best_score:.1f}" )
         episode_score = 0.0
 
